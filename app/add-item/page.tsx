@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -114,44 +116,37 @@ export default function AddItemPage() {
           gap: 18,
         }}
       >
-        {/* TITLE */}
         <div>
           <label className="label">Item name</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Office chair"
             required
             className="input"
           />
         </div>
 
-        {/* DESCRIPTION */}
         <div>
           <label className="label">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Condition, size, anything helpful…"
-            required
             rows={4}
+            required
             className="input"
           />
         </div>
 
-        {/* PICKUP LOCATION */}
         <div>
           <label className="label">Pickup location</label>
           <input
             value={pickupLocation}
             onChange={(e) => setPickupLocation(e.target.value)}
-            placeholder="e.g. Block C"
             required
             className="input"
           />
         </div>
 
-        {/* CATEGORY */}
         <div>
           <label className="label">Category</label>
           <select
@@ -160,14 +155,11 @@ export default function AddItemPage() {
             className="input"
           >
             {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+              <option key={c}>{c}</option>
             ))}
           </select>
         </div>
 
-        {/* CONTACT */}
         <div>
           <label className="label">
             Contact (shown only after approval)
@@ -175,13 +167,11 @@ export default function AddItemPage() {
           <input
             value={contactInfo}
             onChange={(e) => setContactInfo(e.target.value)}
-            placeholder="Phone number, WhatsApp, or email"
             required
             className="input"
           />
         </div>
 
-        {/* IMAGE */}
         <div>
           <label className="label">Photo (optional)</label>
 
@@ -223,7 +213,6 @@ export default function AddItemPage() {
           />
         </div>
 
-        {/* SUBMIT */}
         <button
           type="submit"
           disabled={saving}
