@@ -2,38 +2,41 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 
-type Request = {
+type Item = {
+  id: string;
+  title: string;
+  contact_info: string | null;
+  owner_id: string;
+};
+
+type RequestRow = {
   id: string;
   status: string | null;
   item_id: string;
-  items: {
-    title: string;
-    contact_info: string | null;
-    owner_id: string;
-  };
+  items: Item[]; // ✅ IMPORTANT: array, not object
 };
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const [incoming, setIncoming] = useState<RequestRow[]>([]);
+  const [myRequests, setMyRequests] = useState<RequestRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
-  const [incoming, setIncoming] = useState<Request[]>([]);
-  const [myRequests, setMyRequests] = useState<Request[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
-        router.push("/login");
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setLoading(false);
         return;
       }
 
-      setUserId(auth.user.id);
+      setUserId(user.id);
 
-      /* ===============================
-         REQUESTS FOR MY ITEMS (OWNER)
-         =============================== */
+      // Requests for my items
       const { data: incomingData } = await supabase
         .from("requests")
         .select(
@@ -42,17 +45,16 @@ export default function DashboardPage() {
           status,
           item_id,
           items (
+            id,
             title,
             contact_info,
             owner_id
           )
         `
         )
-        .order("created_at", { ascending: false });
+        .eq("items.owner_id", user.id);
 
-      /* ===============================
-         MY REQUESTS (REQUESTER)
-         =============================== */
+      // Requests I made
       const { data: myReqData } = await supabase
         .from("requests")
         .select(
@@ -61,109 +63,55 @@ export default function DashboardPage() {
           status,
           item_id,
           items (
+            id,
             title,
             contact_info,
             owner_id
           )
         `
         )
-        .eq("requester_id", auth.user.id)
-        .order("created_at", { ascending: false });
+        .eq("requester_id", user.id);
 
       setIncoming(incomingData ?? []);
       setMyRequests(myReqData ?? []);
+      setLoading(false);
     };
 
     load();
-  }, [router]);
+  }, []);
 
-  const updateStatus = async (
-    requestId: string,
-    status: "approved" | "rejected"
-  ) => {
-    await supabase
-      .from("requests")
-      .update({ status })
-      .eq("id", requestId);
-
-    setIncoming((prev) =>
-      prev.map((r) =>
-        r.id === requestId ? { ...r, status } : r
-      )
-    );
-  };
+  if (loading) return <p style={{ padding: 24 }}>Loading dashboard…</p>;
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ padding: 32, maxWidth: 900, margin: "0 auto" }}>
       <h1>Dashboard</h1>
 
-      {/* ======================================
-          REQUESTS FOR MY ITEMS (OWNER VIEW)
-         ====================================== */}
-      <section style={{ marginBottom: 48 }}>
-        <h2>Requests for your items</h2>
+      {/* INCOMING REQUESTS */}
+      <section style={{ marginTop: 40 }}>
+        <h2>Requests for My Items</h2>
 
         {incoming.length === 0 && <p>No requests yet.</p>}
 
         {incoming.map((r) => {
-          const status = r.status ?? "pending";
+          const item = r.items?.[0];
+          if (!item) return null;
 
           return (
             <div
               key={r.id}
               style={{
+                border: "1px solid #eee",
+                borderRadius: 10,
                 padding: 16,
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                marginBottom: 12,
+                marginTop: 12,
               }}
             >
-              <strong>{r.items.title}</strong>
+              <strong>{item.title}</strong>
+              <div>Status: {r.status ?? "pending"}</div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  marginTop: 8,
-                }}
-              >
-                <span style={badgeStyle(status)}>
-                  {status.toUpperCase()}
-                </span>
-
-                {status === "pending" && (
-                  <>
-                    <button
-                      onClick={() =>
-                        updateStatus(r.id, "approved")
-                      }
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() =>
-                        updateStatus(r.id, "rejected")
-                      }
-                    >
-                      Reject
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {/* CONTACT (OWNER ALWAYS SEES THEIR OWN) */}
-              {status === "approved" && r.items.contact_info && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 10,
-                    background: "#dcfce7",
-                    fontWeight: 600,
-                  }}
-                >
-                  📞 Contact: {r.items.contact_info}
+              {r.status === "approved" && item.contact_info && (
+                <div style={{ marginTop: 8 }}>
+                  📞 Contact: <strong>{item.contact_info}</strong>
                 </div>
               )}
             </div>
@@ -171,54 +119,32 @@ export default function DashboardPage() {
         })}
       </section>
 
-      {/* ======================================
-          MY REQUESTS (REQUESTER VIEW)
-         ====================================== */}
-      <section>
-        <h2>My requests</h2>
+      {/* MY REQUESTS */}
+      <section style={{ marginTop: 50 }}>
+        <h2>My Requests</h2>
 
-        {myRequests.length === 0 && (
-          <p>You haven’t requested any items yet.</p>
-        )}
+        {myRequests.length === 0 && <p>You haven’t requested any items.</p>}
 
         {myRequests.map((r) => {
-          const status = r.status ?? "pending";
+          const item = r.items?.[0];
+          if (!item) return null;
 
           return (
             <div
               key={r.id}
               style={{
+                border: "1px solid #eee",
+                borderRadius: 10,
                 padding: 16,
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                marginBottom: 12,
+                marginTop: 12,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <strong>{r.items.title}</strong>
-                <span style={badgeStyle(status)}>
-                  {status.toUpperCase()}
-                </span>
-              </div>
+              <strong>{item.title}</strong>
+              <div>Status: {r.status ?? "pending"}</div>
 
-              {/* CONTACT (ONLY AFTER APPROVAL) */}
-              {status === "approved" && r.items.contact_info && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 10,
-                    background: "#dcfce7",
-                    fontWeight: 600,
-                  }}
-                >
-                  📞 Contact: {r.items.contact_info}
+              {r.status === "approved" && item.contact_info && (
+                <div style={{ marginTop: 8 }}>
+                  📞 Contact: <strong>{item.contact_info}</strong>
                 </div>
               )}
             </div>
@@ -228,23 +154,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-/* 🔖 Status badge (SAFE) */
-const badgeStyle = (status: string): React.CSSProperties => {
-  const map: Record<string, { bg: string; text: string }> = {
-    pending: { bg: "#fef3c7", text: "#92400e" },
-    approved: { bg: "#dcfce7", text: "#166534" },
-    rejected: { bg: "#fee2e2", text: "#991b1b" },
-  };
-
-  const safe = map[status] ?? map["pending"];
-
-  return {
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    background: safe.bg,
-    color: safe.text,
-  };
-};
