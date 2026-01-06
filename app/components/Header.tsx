@@ -1,40 +1,32 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function Header() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
+      setLoggedIn(!!data.user);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoggedIn(!!session?.user);
+    });
 
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    router.push(`/search?q=${encodeURIComponent(query)}`);
-    setQuery("");
-  };
-
-  const handleLogout = async () => {
+  const logout = async () => {
     await supabase.auth.signOut();
+    setOpen(false);
     router.push("/");
   };
 
@@ -44,104 +36,122 @@ export default function Header() {
         position: "sticky",
         top: 0,
         zIndex: 50,
-        background: "rgba(255,255,255,0.9)",
-        backdropFilter: "blur(8px)",
-        borderBottom: "1px solid #eee",
+        background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb",
       }}
     >
       <div
         style={{
-          maxWidth: 1200,
+          maxWidth: 1100,
           margin: "0 auto",
-          padding: "14px 20px",
+          padding: "14px 16px",
           display: "flex",
           alignItems: "center",
-          gap: 16,
+          justifyContent: "space-between",
         }}
       >
         {/* Logo */}
         <Link
           href="/"
           style={{
-            fontSize: 18,
-            fontWeight: 600,
+            fontWeight: 800,
+            fontSize: 20,
             textDecoration: "none",
-            color: "#111",
-            whiteSpace: "nowrap",
+            color: "#0f172a",
           }}
         >
           Deklata
         </Link>
 
-        {/* Search */}
-        <form
-          onSubmit={handleSearch}
+        {/* Hamburger */}
+        <button
+          onClick={() => setOpen(!open)}
+          aria-label="Menu"
           style={{
-            flex: 1,
-            maxWidth: 420,
-            position: "relative",
+            border: "none",
+            background: "transparent",
+            fontSize: 26,
+            cursor: "pointer",
           }}
         >
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search items…"
-            style={{
-              width: "100%",
-              padding: "10px 14px",
-              borderRadius: 999,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              background: "#fafafa",
-            }}
-          />
-        </form>
-
-        {/* Nav */}
-        <nav style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          {user && (
-            <Link
-              href="/add-item"
-              style={{
-                fontSize: 14,
-                color: "#555",
-                textDecoration: "none",
-              }}
-            >
-              Add item
-            </Link>
-          )}
-
-          {!user ? (
-            <Link
-              href="/login"
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: "#111",
-                color: "#fff",
-                textDecoration: "none",
-                fontSize: 14,
-              }}
-            >
-              Log in
-            </Link>
-          ) : (
-            <button
-              onClick={handleLogout}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: 14,
-                color: "#555",
-                cursor: "pointer",
-              }}
-            >
-              Log out
-            </button>
-          )}
-        </nav>
+          ☰
+        </button>
       </div>
+
+      {/* Dropdown Menu */}
+      {open && (
+        <nav
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            background: "#ffffff",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1100,
+              margin: "0 auto",
+              display: "flex",
+              flexDirection: "column",
+              padding: "8px 16px",
+            }}
+          >
+            <MenuLink href="/how-it-works" label="How it works" setOpen={setOpen} />
+
+            {loggedIn && (
+              <>
+                <MenuLink href="/dashboard" label="Dashboard" setOpen={setOpen} />
+                <MenuLink href="/add-item" label="Add item" setOpen={setOpen} />
+                <button
+                  onClick={logout}
+                  style={logoutStyle}
+                >
+                  Log out
+                </button>
+              </>
+            )}
+
+            {!loggedIn && (
+              <MenuLink href="/login" label="Log in" setOpen={setOpen} />
+            )}
+          </div>
+        </nav>
+      )}
     </header>
   );
 }
+
+function MenuLink({
+  href,
+  label,
+  setOpen,
+}: {
+  href: string;
+  label: string;
+  setOpen: (v: boolean) => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={() => setOpen(false)}
+      style={{
+        padding: "12px 0",
+        textDecoration: "none",
+        color: "#0f172a",
+        fontWeight: 500,
+        borderBottom: "1px solid #f1f5f9",
+      }}
+    >
+      {label}
+    </Link>
+  );
+}
+
+const logoutStyle: React.CSSProperties = {
+  padding: "12px 0",
+  textAlign: "left",
+  background: "none",
+  border: "none",
+  color: "#dc2626",
+  fontWeight: 600,
+  cursor: "pointer",
+};
