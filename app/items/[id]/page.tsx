@@ -1,6 +1,4 @@
 "use client";
-export const dynamic = "force-dynamic";
-
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -10,238 +8,158 @@ type Item = {
   id: string;
   title: string;
   description: string;
-  pickup_location: string;
   image_url: string | null;
-  category: string | null;
+  pickup_location: string;
   owner_id: string;
-  contact_info: string | null;
 };
 
 type Request = {
   id: string;
-  status: string | null;
+  status: string;
 };
 
 export default function ItemDetailsPage() {
-  const { id } = useParams();
+  const params = useParams();
   const router = useRouter();
+  const itemId = params.id as string;
 
   const [item, setItem] = useState<Item | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [request, setRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
+  // Get user + item + existing request
   useEffect(() => {
     const load = async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      setUserId(auth.user?.id ?? null);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const { data: itemData, error } = await supabase
+      setUserId(user?.id ?? null);
+
+      const { data: itemData } = await supabase
         .from("items")
         .select("*")
-        .eq("id", id)
+        .eq("id", itemId)
         .single();
-
-      if (error || !itemData) {
-        router.push("/");
-        return;
-      }
 
       setItem(itemData);
 
-      if (auth.user) {
-        const { data: req } = await supabase
+      if (user && itemData) {
+        const { data: reqData } = await supabase
           .from("requests")
           .select("id, status")
-          .eq("item_id", id)
-          .eq("requester_id", auth.user.id)
-          .single();
+          .eq("item_id", itemId)
+          .eq("requester_id", user.id)
+          .maybeSingle();
 
-        if (req) setRequest(req);
+        setRequest(reqData ?? null);
       }
 
       setLoading(false);
     };
 
     load();
-  }, [id, router]);
+  }, [itemId]);
 
-  const requestItem = async () => {
+  const handleRequest = async () => {
     if (!userId) {
       router.push("/login");
       return;
     }
 
-    const { data } = await supabase
+    if (!item) return;
+
+    setSubmitting(true);
+
+    const { data, error } = await supabase
       .from("requests")
       .insert({
-        item_id: id,
+        item_id: item.id,
         requester_id: userId,
+        status: "pending",
       })
-      .select()
+      .select("id, status")
       .single();
 
-    if (data) setRequest(data);
+    if (!error) {
+      setRequest(data);
+    }
+
+    setSubmitting(false);
   };
 
-  if (loading || !item) return null;
+  if (loading) return <p>Loading...</p>;
+  if (!item) return <p>Item not found.</p>;
 
-  const status = request?.status ?? "pending";
+  const isOwner = userId === item.owner_id;
+  const alreadyRequested = !!request;
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-      {/* Back */}
-      <button
-        onClick={() => router.back()}
-        style={{
-          marginBottom: 20,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#475569",
-          fontSize: 14,
-        }}
-      >
-        ← Back to items
-      </button>
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      <h1>{item.title}</h1>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.1fr 0.9fr",
-          gap: 36,
-        }}
-      >
-        {/* IMAGE */}
-        <div>
-          {item.image_url ? (
-            <img
-              src={item.image_url}
-              alt={item.title}
+      {item.image_url && (
+        <img
+          src={item.image_url}
+          alt={item.title}
+          style={{
+            width: "100%",
+            maxHeight: 360,
+            objectFit: "cover",
+            borderRadius: 12,
+            marginBottom: 16,
+          }}
+        />
+      )}
+
+      <p>{item.description}</p>
+      <p style={{ color: "#555", marginTop: 8 }}>
+        Pickup: {item.pickup_location}
+      </p>
+
+      {/* REQUEST BUTTON LOGIC */}
+      {!isOwner && userId && (
+        <div style={{ marginTop: 24 }}>
+          {!alreadyRequested ? (
+            <button
+              onClick={handleRequest}
+              disabled={submitting}
               style={{
-                width: "100%",
-                height: 420,
-                objectFit: "cover",
-                borderRadius: 18,
+                padding: "12px 20px",
+                background: "#111",
+                color: "#fff",
+                borderRadius: 8,
+                border: "none",
+                cursor: "pointer",
               }}
-            />
+            >
+              {submitting ? "Sending request..." : "Request item"}
+            </button>
           ) : (
-            <div
+            <button
+              disabled
               style={{
-                height: 420,
-                borderRadius: 18,
+                padding: "12px 20px",
                 background: "#e5e7eb",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#64748b",
+                color: "#111",
+                borderRadius: 8,
+                border: "none",
+                cursor: "not-allowed",
               }}
             >
-              No image available
-            </div>
-          )}
-        </div>
-
-        {/* DETAILS */}
-        <div>
-          {/* Title + Status badge */}
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <h1 style={{ margin: 0 }}>{item.title}</h1>
-            {request && (
-              <span style={badgeStyle(status)}>
-                {status.toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <p style={{ color: "#64748b", marginBottom: 18 }}>
-            Category: {item.category ?? "Others"}
-          </p>
-
-          <p style={{ fontSize: 16, marginBottom: 20 }}>
-            {item.description}
-          </p>
-
-          <p style={{ marginBottom: 28 }}>
-            📍 <strong>Pickup location:</strong> {item.pickup_location}
-          </p>
-
-          {/* ACTION AREA */}
-          {userId === item.owner_id ? (
-            <div style={infoBox}>
-              You posted this item.
-            </div>
-          ) : !userId ? (
-            <button onClick={() => router.push("/login")} style={primaryBtn}>
-              Login to request item
-            </button>
-          ) : request ? (
-            <div style={infoBox}>
-              {status === "pending" && "Request sent — awaiting approval"}
-              {status === "rejected" && "Request rejected"}
-              {status === "approved" && "Request approved"}
-            </div>
-          ) : (
-            <button onClick={requestItem} style={primaryBtn}>
-              Request item
+              Request sent – awaiting approval
             </button>
           )}
-
-          {/* CONTACT REVEAL (ONLY AFTER APPROVAL) */}
-          {status === "approved" && request && (
-            <div
-              style={{
-                marginTop: 20,
-                padding: 16,
-                borderRadius: 12,
-                background: "#dcfce7",
-                fontWeight: 600,
-              }}
-            >
-              📞 Contact the owner: {item.contact_info}
-            </div>
-          )}
         </div>
-      </div>
+      )}
+
+      {!userId && (
+        <p style={{ marginTop: 20 }}>
+          <a href="/login">Log in</a> to request this item.
+        </p>
+      )}
     </div>
   );
 }
-
-/* ---------- styles ---------- */
-
-const primaryBtn: React.CSSProperties = {
-  padding: "14px 20px",
-  borderRadius: 14,
-  background: "#0f172a",
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-};
-
-const infoBox: React.CSSProperties = {
-  padding: 14,
-  borderRadius: 12,
-  background: "#f1f5f9",
-  color: "#475569",
-  fontWeight: 600,
-};
-
-const badgeStyle = (status: string): React.CSSProperties => {
-  const map: Record<string, { bg: string; text: string }> = {
-    pending: { bg: "#fef3c7", text: "#92400e" },
-    approved: { bg: "#dcfce7", text: "#166534" },
-    rejected: { bg: "#fee2e2", text: "#991b1b" },
-  };
-
-  const safe = map[status] ?? map["pending"];
-
-  return {
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    background: safe.bg,
-    color: safe.text,
-  };
-};
